@@ -1997,6 +1997,20 @@
           </div>
         </div>
       </div>
+      <div v-if="reputationEnabled" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="input-label">{{ t('admin.reputation.account.tier') }}</label>
+          <Select v-model="form.reputation_tier_id" :options="reputationTierOptions" :searchable="false" />
+          <p class="input-hint">{{ t('admin.reputation.account.tierHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.reputation.account.scoreEnabled') }}</label>
+          <div class="flex h-10 items-center">
+            <Toggle v-model="form.reputation_score_enabled" />
+          </div>
+          <p class="input-hint">{{ t('admin.reputation.account.scoreEnabledHint') }}</p>
+        </div>
+      </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -3389,6 +3403,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { defaultReputationScoreEnabled, useReputationSettings } from '@/composables/useReputationSettings'
 import { useAppStore } from '@/stores/app'
 
 import { adminAPI } from '@/api/admin'
@@ -3625,6 +3640,7 @@ watch(() => props.account?.id, () => {
   if (opencodeGoState.value && !opencodeGoState.value.snapshot) void loadOpenCodeGoUsage()
 })
 
+onMounted(() => { void loadReputationSettings() })
 onMounted(() => {
   if (opencodeGoState.value && !opencodeGoState.value.snapshot) void loadOpenCodeGoUsage()
 })
@@ -4511,7 +4527,9 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  reputation_tier_id: '',
+  reputation_score_enabled: false
 })
 
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
@@ -4617,6 +4635,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
   form.rate_multiplier = newAccount.rate_multiplier ?? 1
+  form.reputation_tier_id = newAccount.reputation_tier_id || defaultTierID.value || ''
+  form.reputation_score_enabled = newAccount.reputation_score_enabled ?? defaultReputationScoreEnabled(newAccount.type)
   form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
     ? newAccount.status
     : 'active'
@@ -5617,6 +5637,10 @@ const persistGrokMediaEligibility = async (accountID: number, updatedAccount: Ac
 }
 
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
+  if (reputationEnabled.value) {
+    updatePayload.reputation_tier_id = form.reputation_tier_id
+    updatePayload.reputation_score_enabled = form.reputation_score_enabled
+  }
   submitting.value = true
   try {
     let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))

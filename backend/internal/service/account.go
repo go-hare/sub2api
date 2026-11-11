@@ -48,6 +48,11 @@ type Account struct {
 
 	Schedulable bool
 
+	// ReputationTierID binds this account to an admin-defined reputation bucket.
+	ReputationTierID string `json:"reputation_tier_id,omitempty"`
+	// ReputationScoreEnabled nil means default-by-type; non-nil is an explicit override.
+	ReputationScoreEnabled *bool `json:"reputation_score_enabled,omitempty"`
+
 	RateLimitedAt    *time.Time
 	RateLimitResetAt *time.Time
 	OverloadUntil    *time.Time

@@ -15,11 +15,29 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
+
+func (s *OpenAIGatewayService) SetReputationService(svc *ReputationService) {
+	if s != nil {
+		s.reputationService = svc
+	}
+}
+
+func (s *OpenAIGatewayService) filterAccountsByReputation(ctx context.Context, accounts []Account) ([]Account, error) {
+	if s == nil || s.reputationService == nil {
+		return accounts, nil
+	}
+	userID, _ := ctx.Value(ctxkey.UserID).(int64)
+	if userID <= 0 {
+		return accounts, nil
+	}
+	return s.reputationService.FilterAccounts(ctx, userID, accounts)
+}
 
 const (
 	openCodeSessionAffinityHeader = "X-Session-Affinity"
@@ -1510,6 +1528,10 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 			return accounts, err
 		}
 		accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
+		accounts, err = s.filterAccountsByReputation(ctx, accounts)
+		if err != nil {
+			return accounts, err
+		}
 		if platform == PlatformGrok {
 			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 		}
@@ -1528,6 +1550,10 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
 	accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
+	accounts, err = s.filterAccountsByReputation(ctx, accounts)
+	if err != nil {
+		return accounts, err
+	}
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 	}

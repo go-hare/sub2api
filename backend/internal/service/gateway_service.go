@@ -809,6 +809,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	reputationService     *ReputationService
 }
 
 // NewGatewayService creates a new GatewayService

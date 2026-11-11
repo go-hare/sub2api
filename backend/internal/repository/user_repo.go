@@ -190,6 +190,7 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	attachOneUserReputation(ctx, r.sql, out)
 	return out, nil
 }
 
@@ -207,6 +208,7 @@ func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	attachOneUserReputation(ctx, r.sql, out)
 	return out, nil
 }
 
@@ -654,6 +656,7 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 			u.AllowedGroups = groups
 		}
 	}
+	attachUserReputationScores(ctx, r.sql, outUsers)
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
 }

@@ -205,6 +205,9 @@ func createAccountRecord(ctx context.Context, client *dbent.Client, account *ser
 	account.ID = created.ID
 	account.CreatedAt = created.CreatedAt
 	account.UpdatedAt = created.UpdatedAt
+	if err := persistAccountReputation(ctx, client, account); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3483,6 +3486,7 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 		}
 		outAccounts = append(outAccounts, *out)
 	}
+	attachAccountReputation(ctx, r.sql, outAccounts)
 
 	return outAccounts, nil
 }

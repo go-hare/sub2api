@@ -3268,6 +3268,20 @@
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
+      <div v-if="reputationEnabled" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="input-label">{{ t('admin.reputation.account.tier') }}</label>
+          <Select v-model="form.reputation_tier_id" :options="reputationTierOptions" :searchable="false" />
+          <p class="input-hint">{{ t('admin.reputation.account.tierHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.reputation.account.scoreEnabled') }}</label>
+          <div class="flex h-10 items-center">
+            <Toggle v-model="form.reputation_score_enabled" />
+          </div>
+          <p class="input-hint">{{ t('admin.reputation.account.scoreEnabledHint') }}</p>
+        </div>
+      </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
@@ -4120,8 +4134,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { defaultReputationScoreEnabled, useReputationSettings } from '@/composables/useReputationSettings'
 import { useAppStore } from '@/stores/app'
 
 import {
@@ -5034,6 +5049,7 @@ const tempUnschedPresets = computed(() => [
   }
 ])
 
+onMounted(() => { void loadReputationSettings() })
 const form = reactive({
   name: '',
   notes: '',
@@ -5046,7 +5062,9 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  reputation_tier_id: '',
+  reputation_score_enabled: true
 })
 
 // Helper to check if current type needs OAuth flow
@@ -5638,6 +5656,8 @@ const resetForm = () => {
   form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
+  form.reputation_tier_id = defaultTierID.value || ''
+  form.reputation_score_enabled = defaultReputationScoreEnabled(form.type)
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
@@ -6369,6 +6389,7 @@ const createAccountAndFinish = async (
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
     // 上游倍率探测对全部 API-key 平台开放（antigravity upstream 走本 helper）；
     // 非 apikey 类型（bedrock/oauth）不传，后端不动作。
     upstream_billing_probe_enabled: type === 'apikey' ? upstreamBillingAutoProbeEnabled.value : undefined,
@@ -6436,6 +6457,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
           auto_pause_on_expired: autoPauseOnExpired.value
         })
         successCount++
@@ -6503,6 +6525,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       priority: form.priority,
       rate_multiplier: form.rate_multiplier,
       expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
       auto_pause_on_expired: autoPauseOnExpired.value
     })
 
@@ -6613,6 +6636,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
           auto_pause_on_expired: autoPauseOnExpired.value
         })
         successCount++
@@ -6712,6 +6736,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
         auto_pause_on_expired: autoPauseOnExpired.value
       })
       appStore.showSuccess(t('admin.accounts.accountCreated'))
@@ -6817,6 +6842,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       rate_multiplier: form.rate_multiplier,
       group_ids: form.group_ids,
       expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra: withUpstreamRequestIdHeader(extra),
@@ -6895,6 +6921,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       rate_multiplier: form.rate_multiplier,
       group_ids: form.group_ids,
       expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra: withUpstreamRequestIdHeader(extra)
@@ -6993,6 +7020,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
             expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
             auto_pause_on_expired: autoPauseOnExpired.value
           })
         }
@@ -7092,6 +7120,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
           auto_pause_on_expired: autoPauseOnExpired.value
         })
         await adminAPI.accounts.create(createPayload)
@@ -7473,6 +7502,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
+    ...(reputationEnabled.value ? { reputation_tier_id: form.reputation_tier_id, reputation_score_enabled: form.reputation_score_enabled } : {}),
           auto_pause_on_expired: autoPauseOnExpired.value
         })
 

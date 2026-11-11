@@ -585,7 +585,10 @@ export default {
         concurrencyPlaceholder: '0 = unlimited',
         concurrencyHint: 'Max concurrent requests for this user; 0 = unlimited.',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
+        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.',
+        reputationScore: 'Reputation score',
+        reputationScoreHint: '0–100. A changed score is saved separately from the profile.',
+        reputationTier: 'Current tier'
       },
       columns: {
         user: 'User',
@@ -604,6 +607,8 @@ export default {
         usageGemini: 'Usage (Gemini)',
         usageAntigravity: 'Usage (Antigravity)',
         concurrency: 'Concurrency',
+        reputationScore: 'Reputation',
+        reputationTier: 'Tier',
         status: 'Status',
         lastActive: 'Last Active',
         lastUsed: 'Last Used',

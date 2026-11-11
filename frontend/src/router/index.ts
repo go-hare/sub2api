@@ -621,6 +621,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/reputation',
+    name: 'AdminReputation',
+    component: () => import('@/views/admin/ReputationView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Reputation Routing',
+      titleKey: 'admin.reputation.title',
+      descriptionKey: 'admin.reputation.description'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),

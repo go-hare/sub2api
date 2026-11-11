@@ -206,8 +206,15 @@ type UpdateAccountRequest struct {
 
 // AccountService 账号管理服务
 type AccountService struct {
-	accountRepo AccountRepository
-	groupRepo   GroupRepository
+	accountRepo       AccountRepository
+	groupRepo         GroupRepository
+	reputationService *ReputationService
+}
+
+func (s *AccountService) SetReputationService(svc *ReputationService) {
+	if s != nil {
+		s.reputationService = svc
+	}
 }
 
 type groupExistenceBatchChecker interface {

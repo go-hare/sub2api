@@ -35,6 +35,7 @@ type UserHandler struct {
 	totpService           *service.TotpService                // 角色提升为管理员的 step-up 门控
 	userService           *service.UserService
 	settingService        *service.SettingService // step-up 功能开关
+	reputationService     *service.ReputationService
 }
 
 // NewUserHandler creates a new admin user handler
@@ -56,6 +57,31 @@ func NewUserHandler(
 		userService:           userService,
 		settingService:        settingService,
 	}
+}
+
+func (h *UserHandler) SetReputationService(svc *service.ReputationService) {
+	if h != nil {
+		h.reputationService = svc
+	}
+}
+
+func (h *UserHandler) attachReputation(ctx context.Context, user *dto.AdminUser) *dto.AdminUser {
+	if user == nil {
+		return nil
+	}
+	if h != nil && h.reputationService != nil {
+		dto.AttachReputationTier(&user.User, h.reputationService.GetSettings(ctx))
+	}
+	return user
+}
+
+func (h *UserHandler) decorateAdminUser(c *gin.Context, user *service.User) any {
+	raw := adminUserResponse(c, user)
+	adminUser, ok := raw.(*dto.AdminUser)
+	if !ok || adminUser == nil {
+		return raw
+	}
+	return h.attachReputation(c.Request.Context(), adminUser)
 }
 
 // CreateUserRequest represents admin create user request
@@ -188,8 +214,9 @@ func (h *UserHandler) List(c *gin.Context) {
 	// Build response with concurrency info
 	out := make([]UserWithConcurrency, len(users))
 	for i := range users {
+		adminUser := h.attachReputation(c.Request.Context(), dto.UserFromServiceAdmin(&users[i]))
 		out[i] = UserWithConcurrency{
-			AdminUser: *dto.UserFromServiceAdmin(&users[i]),
+			AdminUser: *adminUser,
 		}
 		if info := loadInfo[users[i].ID]; info != nil {
 			out[i].CurrentConcurrency = info.CurrentConcurrency
@@ -242,7 +269,7 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, adminUserResponse(c, user))
+	response.Success(c, h.decorateAdminUser(c, user))
 }
 
 // BindAuthIdentity manually binds a canonical auth identity to a user.
@@ -318,7 +345,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserFromServiceAdmin(user))
+	response.Success(c, h.decorateAdminUser(c, user))
 }
 
 // Update handles updating a user
@@ -379,7 +406,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserFromServiceAdmin(user))
+	response.Success(c, h.decorateAdminUser(c, user))
 }
 
 // Delete handles deleting a user
@@ -427,7 +454,7 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		if execErr != nil {
 			return nil, execErr
 		}
-		return dto.UserFromServiceAdmin(user), nil
+		return h.decorateAdminUser(c, user), nil
 	}, func(data any) any {
 		// 成功确认不隐式授予用户资料或余额读取权限；缓存重放也必须经过此边界。
 		if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {

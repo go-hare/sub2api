@@ -45,6 +45,11 @@ func ContextSkipRedeemAffiliate(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ctxKeySkipRedeemAffiliate{}, true)
 }
 
+func skipRedeemAffiliate(ctx context.Context) bool {
+	v, _ := ctx.Value(ctxKeySkipRedeemAffiliate{}).(bool)
+	return v
+}
+
 // RedeemCache defines cache operations for redeem service
 type RedeemCache interface {
 	GetRedeemAttemptCount(ctx context.Context, userID int64) (int, error)
@@ -137,6 +142,12 @@ type RedeemCodeBatchUpdateResult struct {
 	Updated int64 `json:"updated"`
 }
 
+func (s *RedeemService) SetReputationService(svc *ReputationService) {
+	if s != nil {
+		s.reputationService = svc
+	}
+}
+
 // RedeemService 兑换码服务
 type RedeemService struct {
 	redeemRepo           RedeemCodeRepository
@@ -148,6 +159,7 @@ type RedeemService struct {
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	affiliateService     *AffiliateService
+	reputationService    *ReputationService
 }
 
 // NewRedeemService 创建兑换码服务实例
@@ -552,6 +564,13 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 	// 余额类正数兑换码触发邀请返利（best-effort，失败不影响兑换结果）
 	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 {
 		s.tryAccrueAffiliateRebateForRedeem(ctx, userID, redeemCode.Value)
+		if s.reputationService != nil {
+			if skipRedeemAffiliate(ctx) {
+				s.reputationService.ApplyRecharge(ctx, userID, redeemCode.Value)
+			} else {
+				s.reputationService.ApplyRedeemBalance(ctx, userID, redeemCode.Value)
+			}
+		}
 	}
 
 	// 重新获取更新后的兑换码

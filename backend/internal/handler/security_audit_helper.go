@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -65,6 +66,14 @@ func (h *OpenAIGatewayHandler) checkSecurityAuditStage(c *gin.Context, reqLog *z
 	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, stage)
 }
 
+func recordReputationContentBlock(c *gin.Context, subject middleware2.AuthSubject, decision *securityaudit.Decision) *securityaudit.Decision {
+	if decision != nil && decision.Kind == securityaudit.DecisionBlock && subject.UserID > 0 && c != nil && c.Request != nil {
+		requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+		service.RecordReputationContentAudit(c.Request.Context(), subject.UserID, requestID)
+	}
+	return decision
+}
+
 func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
 	if c == nil || c.Request == nil {
 		return nil
@@ -92,7 +101,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		if decision.AllowNextStage && cacheCompletion {
 			c.Set(securityAuditCompletedContextKey, true)
 		}
-		return &decision
+		return recordReputationContentBlock(c, subject, &decision)
 	}
 	request := buildSecurityAuditRequest(c, apiKey, subject, protocol, model, body, stage)
 	if isSecurityAuditWebSocketStage(request.Stage) {
@@ -114,7 +123,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 				})
 			}
 			logSecurityAuditDone(reqLog, request, decision, false)
-			return &decision
+			return recordReputationContentBlock(c, subject, &decision)
 		}
 	}
 	logSecurityAuditStart(reqLog, request, len(body), false)
@@ -123,7 +132,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		c.Set(securityAuditCompletedContextKey, true)
 	}
 	logSecurityAuditDone(reqLog, request, decision, false)
-	return &decision
+	return recordReputationContentBlock(c, subject, &decision)
 }
 
 func logSecurityAuditStart(reqLog *zap.Logger, request securityaudit.Request, bodyBytes int, cached bool) {

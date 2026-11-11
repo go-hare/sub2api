@@ -20,6 +20,23 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
+func (s *GatewayService) SetReputationService(svc *ReputationService) {
+	if s != nil {
+		s.reputationService = svc
+	}
+}
+
+func (s *GatewayService) filterAccountsByReputation(ctx context.Context, accounts []Account) ([]Account, error) {
+	if s == nil || s.reputationService == nil {
+		return accounts, nil
+	}
+	userID, _ := ctx.Value(ctxkey.UserID).(int64)
+	if userID <= 0 {
+		return accounts, nil
+	}
+	return s.reputationService.FilterAccounts(ctx, userID, accounts)
+}
+
 // SelectAccount 选择账号（粘性会话+优先级）
 func (s *GatewayService) SelectAccount(ctx context.Context, groupID *int64, sessionHash string) (*Account, error) {
 	return s.SelectAccountForModel(ctx, groupID, sessionHash, "")
@@ -1016,6 +1033,11 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
 			accounts = s.filterAccountsBySchedulingThreshold(ctx, accounts)
+			var filterErr error
+			accounts, filterErr = s.filterAccountsByReputation(ctx, accounts)
+			if filterErr != nil {
+				return accounts, useMixed, filterErr
+			}
 			if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 				accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
 			}
@@ -1080,7 +1102,12 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 					"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 			}
 		}
-		return s.filterAccountsBySchedulingThreshold(ctx, filtered), useMixed, nil
+		filtered = s.filterAccountsBySchedulingThreshold(ctx, filtered)
+		filtered, err = s.filterAccountsByReputation(ctx, filtered)
+		if err != nil {
+			return filtered, useMixed, err
+		}
+		return filtered, useMixed, nil
 	}
 
 	var accounts []Account
@@ -1116,6 +1143,10 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		}
 	}
 	accounts = s.filterAccountsBySchedulingThreshold(ctx, accounts)
+	accounts, err = s.filterAccountsByReputation(ctx, accounts)
+	if err != nil {
+		return accounts, useMixed, err
+	}
 	if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 		accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
 	}

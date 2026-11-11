@@ -582,6 +582,8 @@ export default {
         usageGemini: '用量 (Gemini)',
         usageAntigravity: '用量 (Antigravity)',
         concurrency: '并发数',
+        reputationScore: '信誉分',
+        reputationTier: '档位',
         status: '状态',
         lastActive: '最后活跃时间',
         lastUsed: '最后使用时间',
@@ -650,7 +652,10 @@ export default {
         concurrencyPlaceholder: '0 表示不限制',
         concurrencyHint: '该用户的最大并发请求数，0 = 不限制',
         rpmLimitPlaceholder: '0 表示不限制',
-        rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效'
+        rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效',
+        reputationScore: '信誉分',
+        reputationScoreHint: '0–100。保存用户资料时，如果分数有变化会单独写入。',
+        reputationTier: '当前档位'
       },
       adjustBalance: '调整余额',
       adjustConcurrency: '调整并发数',

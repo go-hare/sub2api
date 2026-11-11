@@ -42,6 +42,7 @@ func MarkOpsCyberPolicy(c *gin.Context, mark CyberPolicyMark) {
 	mark.Message = strings.TrimSpace(mark.Message)
 	mark.Body = strings.TrimSpace(mark.Body)
 	c.Set(opsCyberPolicyKey, &mark)
+	RecordReputationUpstreamSecurity(c)
 }
 
 // GetOpsCyberPolicy 返回 cyber 标记，未命中（或已被 Clear）返回 nil。

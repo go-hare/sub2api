@@ -34,6 +34,9 @@ type User struct {
 	// RPMLimit 用户级每分钟请求数上限（0 = 不限制），仅在所用分组未设置 rpm_limit 时作为兜底生效。
 	RPMLimit int `json:"rpm_limit"`
 
+	ReputationScore *int                    `json:"reputation_score,omitempty"`
+	ReputationTier  *service.ReputationTier `json:"reputation_tier,omitempty"`
+
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
 }
@@ -239,6 +242,9 @@ type Account struct {
 
 	Schedulable bool `json:"schedulable"`
 
+	ReputationTierID       string `json:"reputation_tier_id,omitempty"`
+	ReputationScoreEnabled *bool  `json:"reputation_score_enabled,omitempty"`
+
 	RateLimitedAt    *time.Time `json:"rate_limited_at"`
 	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`
 	OverloadUntil    *time.Time `json:"overload_until"`
@@ -367,6 +373,9 @@ type AccountListItem struct {
 	UpdatedAt               time.Time  `json:"updated_at"`
 
 	Schedulable bool `json:"schedulable"`
+
+	ReputationTierID       string `json:"reputation_tier_id,omitempty"`
+	ReputationScoreEnabled *bool  `json:"reputation_score_enabled,omitempty"`
 
 	RateLimitedAt    *time.Time `json:"rate_limited_at"`
 	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`

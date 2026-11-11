@@ -573,6 +573,13 @@
             <PlatformCostCell :usage="getPlatformUsage(row.id, 'antigravity')" />
           </template>
 
+          <template #cell-reputation_score="{ row }">
+            <span class="text-sm font-medium text-gray-900 dark:text-white">{{ Number.isFinite(row.reputation_score) ? row.reputation_score : '-' }}</span>
+          </template>
+          <template #cell-reputation_tier="{ row }">
+            <span class="text-sm surface-muted">{{ row.reputation_tier?.name || '-' }}</span>
+          </template>
+
           <template #cell-concurrency="{ row }">
             <UserConcurrencyCell
               :current="row.current_concurrency ?? 0"
@@ -801,7 +808,9 @@ import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
+const { enabled: reputationEnabled, load: loadReputationSettings } = useReputationSettings()
 import { adminAPI } from '@/api/admin'
+import { useReputationSettings } from '@/composables/useReputationSettings'
 import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
 import type { PlatformQuotaItem } from '@/api/admin/users'
@@ -898,6 +907,10 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_gemini', label: t('admin.users.columns.usageGemini'), sortable: false },
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
+  ...(reputationEnabled.value ? [
+    { key: 'reputation_score', label: t('admin.users.columns.reputationScore'), sortable: false },
+    { key: 'reputation_tier', label: t('admin.users.columns.reputationTier'), sortable: false }
+  ] : []),
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
@@ -1889,6 +1902,7 @@ const handleScroll = () => {
 }
 
 onMounted(async () => {
+  await loadReputationSettings()
   await loadAttributeDefinitions()
   loadSavedFilters()
   loadSavedColumns()

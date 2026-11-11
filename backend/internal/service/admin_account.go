@@ -425,17 +425,19 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
-		Name:        input.Name,
-		Notes:       normalizeAccountNotes(input.Notes),
-		Platform:    input.Platform,
-		Type:        input.Type,
-		Credentials: input.Credentials,
-		Extra:       accountExtra,
-		ProxyID:     input.ProxyID,
-		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
-		Priority:    input.Priority,
-		Status:      StatusActive,
-		Schedulable: true,
+		Name:                   input.Name,
+		Notes:                  normalizeAccountNotes(input.Notes),
+		Platform:               input.Platform,
+		Type:                   input.Type,
+		Credentials:            input.Credentials,
+		Extra:                  accountExtra,
+		ProxyID:                input.ProxyID,
+		Concurrency:            normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
+		Priority:               input.Priority,
+		Status:                 StatusActive,
+		Schedulable:            true,
+		ReputationTierID:       input.ReputationTierID,
+		ReputationScoreEnabled: input.ReputationScoreEnabled,
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -536,6 +538,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		return nil, err
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
+		return nil, err
+	}
+	if err := s.applyAccountReputation(ctx, account, input.ReputationTierID, input.ReputationScoreEnabled, true); err != nil {
 		return nil, err
 	}
 
@@ -920,6 +925,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := s.accountRepo.BindGroups(ctx, account.ID, *input.GroupIDs); err != nil {
 			return nil, err
 		}
+	}
+
+	tierID := account.ReputationTierID
+	if input.ReputationTierID != nil {
+		tierID = *input.ReputationTierID
+	}
+	if err := s.applyAccountReputation(ctx, account, tierID, input.ReputationScoreEnabled, false); err != nil {
+		return nil, err
 	}
 
 	// 重新查询以确保返回完整数据（包括正确的 Proxy 关联对象）
@@ -1821,4 +1834,29 @@ func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account 
 	}
 	applyAntigravityPrivacyMode(account, mode)
 	return mode
+}
+
+func (s *adminServiceImpl) applyAccountReputation(ctx context.Context, account *Account, tierID string, scoreEnabled *bool, requiredWhenEnabled bool) error {
+	if s == nil || s.reputationService == nil || account == nil {
+		return nil
+	}
+	settings := s.reputationService.GetSettings(ctx)
+	if !settings.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(tierID) == "" && requiredWhenEnabled {
+		tierID = DefaultAccountReputationTierID(settings.Tiers, settings.InitialScore)
+	}
+	if strings.TrimSpace(tierID) != "" {
+		if err := s.reputationService.ValidateAccountTier(ctx, tierID); err != nil {
+			return err
+		}
+	}
+	account.ReputationTierID = strings.TrimSpace(tierID)
+	account.ReputationScoreEnabled = scoreEnabled
+	var storedTier *string
+	if account.ReputationTierID != "" {
+		storedTier = &account.ReputationTierID
+	}
+	return s.reputationService.SetAccountFields(ctx, account.ID, storedTier, scoreEnabled)
 }

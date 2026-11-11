@@ -89,6 +89,8 @@ export interface User {
   frozen_balance?: number // Balance currently held by async batch jobs
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
+  reputation_score?: number
+  reputation_tier?: { id: string; name: string; score: number }
   status: 'active' | 'disabled' // Account status
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   balance_notify_enabled: boolean
@@ -1332,6 +1334,8 @@ export interface Account {
 
   // Rate limit & scheduling fields
   schedulable: boolean
+  reputation_tier_id?: string
+  reputation_score_enabled?: boolean | null
   rate_limited_at: string | null
   rate_limit_reset_at: string | null
   overload_until: string | null
