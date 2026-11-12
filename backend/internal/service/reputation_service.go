@@ -12,10 +12,10 @@ import (
 
 type ReputationStore interface {
 	GetUserScore(ctx context.Context, userID int64) (int, error)
-	SetUserScore(ctx context.Context, userID int64, score int) error
+	ApplyUserScoreChange(ctx context.Context, userID int64, delta int, absolute *int) (before, after int, err error)
 	InsertLog(ctx context.Context, log ReputationScoreLog) error
 	CountAccountsByTierID(ctx context.Context, tierID string) (int64, error)
-	SetAccountReputation(ctx context.Context, accountID int64, tierID *string, scoreEnabled *bool) error
+	SetAccountReputation(ctx context.Context, accountID int64, patch AccountReputationPatch) error
 }
 
 type ReputationService struct {
@@ -178,21 +178,16 @@ func (s *ReputationService) Apply(ctx context.Context, input ReputationApplyInpu
 	if skip {
 		return
 	}
-	before, err := s.store.GetUserScore(ctx, input.UserID)
+	if absolute == nil && delta == 0 && input.Event != ReputationEventRegister && input.Event != ReputationEventAdminAdjust {
+		return
+	}
+	before, after, err := s.store.ApplyUserScoreChange(ctx, input.UserID, delta, absolute)
 	if err != nil {
-		slog.Warn("reputation.get_score_failed", "user_id", input.UserID, "error", err)
+		slog.Warn("reputation.apply_score_failed", "user_id", input.UserID, "error", err)
 		return
 	}
-	after := ClampReputationScore(before + delta)
-	if absolute != nil {
-		after = ClampReputationScore(*absolute)
-		delta = after - before
-	}
+	delta = after - before
 	if delta == 0 && input.Event != ReputationEventRegister && input.Event != ReputationEventAdminAdjust {
-		return
-	}
-	if err := s.store.SetUserScore(ctx, input.UserID, after); err != nil {
-		slog.Warn("reputation.set_score_failed", "user_id", input.UserID, "error", err)
 		return
 	}
 	log := ReputationScoreLog{
@@ -296,11 +291,11 @@ func (s *ReputationService) AdminSetScore(ctx context.Context, userID, actorAdmi
 	return nil
 }
 
-func (s *ReputationService) SetAccountFields(ctx context.Context, accountID int64, tierID *string, scoreEnabled *bool) error {
+func (s *ReputationService) SetAccountFields(ctx context.Context, accountID int64, patch AccountReputationPatch) error {
 	if s == nil || s.store == nil {
 		return nil
 	}
-	return s.store.SetAccountReputation(ctx, accountID, tierID, scoreEnabled)
+	return s.store.SetAccountReputation(ctx, accountID, patch)
 }
 
 func (s *ReputationService) ValidateAccountTier(ctx context.Context, tierID string) error {

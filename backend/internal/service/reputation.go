@@ -87,6 +87,15 @@ type ReputationApplyInput struct {
 	Reason       string
 }
 
+// AccountReputationPatch is a partial write of account reputation columns.
+// Nil TierID leaves the stored tier unchanged. SetScoreEnabled false leaves
+// reputation_score_enabled unchanged, including an explicit stored true/false.
+type AccountReputationPatch struct {
+	TierID          *string
+	ScoreEnabled    *bool
+	SetScoreEnabled bool
+}
+
 func defaultReputationConfigJSON() string {
 	raw, err := MarshalReputationSettings(DefaultReputationSettings())
 	if err != nil {

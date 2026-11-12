@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/sha256"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -16,6 +17,7 @@ import (
 const securityAuditCompletedContextKey = "sub2api.security_audit.completed"
 const securityAuditWSTurnContextKey = "sub2api.security_audit.ws_turn"
 const securityAuditWSDedupeContextKey = "sub2api.security_audit.ws_dedupe"
+const reputationContentAuditScoredKey = "sub2api.reputation.content_audit_scored"
 
 type securityAuditWSDedupeEntry struct {
 	stage    string
@@ -66,12 +68,44 @@ func (h *OpenAIGatewayHandler) checkSecurityAuditStage(c *gin.Context, reqLog *z
 	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, stage)
 }
 
-func recordReputationContentBlock(c *gin.Context, subject middleware2.AuthSubject, decision *securityaudit.Decision) *securityaudit.Decision {
-	if decision != nil && decision.Kind == securityaudit.DecisionBlock && subject.UserID > 0 && c != nil && c.Request != nil {
-		requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
-		service.RecordReputationContentAudit(c.Request.Context(), subject.UserID, requestID)
+func recordReputationContentBlock(c *gin.Context, subject middleware2.AuthSubject, decision *securityaudit.Decision, stage string) *securityaudit.Decision {
+	if decision == nil || decision.Kind != securityaudit.DecisionBlock || subject.UserID <= 0 || c == nil || c.Request == nil {
+		return decision
 	}
+	if !markReputationContentAuditScored(c, stage) {
+		return decision
+	}
+	requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+	service.RecordReputationContentAudit(c.Request.Context(), subject.UserID, requestID)
 	return decision
+}
+
+// markReputationContentAuditScored records that this request already deducted for a
+// content-audit block. HTTP stages share one scope. WebSocket turns each get their own,
+// so a later turn can still score, but repeated stages of the same turn cannot.
+func markReputationContentAuditScored(c *gin.Context, stage string) bool {
+	if c == nil {
+		return false
+	}
+	scope := "http"
+	if isSecurityAuditWebSocketStage(stage) {
+		if turn, ok := securityAuditWSTurn(c); ok {
+			scope = "ws:" + strconv.Itoa(turn)
+		} else {
+			scope = "ws:" + strings.TrimSpace(stage)
+		}
+	}
+	scored, _ := c.Get(reputationContentAuditScoredKey)
+	set, _ := scored.(map[string]struct{})
+	if set == nil {
+		set = map[string]struct{}{}
+	}
+	if _, ok := set[scope]; ok {
+		return false
+	}
+	set[scope] = struct{}{}
+	c.Set(reputationContentAuditScoredKey, set)
+	return true
 }
 
 func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
@@ -101,7 +135,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		if decision.AllowNextStage && cacheCompletion {
 			c.Set(securityAuditCompletedContextKey, true)
 		}
-		return recordReputationContentBlock(c, subject, &decision)
+		return recordReputationContentBlock(c, subject, &decision, stage)
 	}
 	request := buildSecurityAuditRequest(c, apiKey, subject, protocol, model, body, stage)
 	if isSecurityAuditWebSocketStage(request.Stage) {
@@ -123,7 +157,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 				})
 			}
 			logSecurityAuditDone(reqLog, request, decision, false)
-			return recordReputationContentBlock(c, subject, &decision)
+			return recordReputationContentBlock(c, subject, &decision, stage)
 		}
 	}
 	logSecurityAuditStart(reqLog, request, len(body), false)
@@ -132,7 +166,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 		c.Set(securityAuditCompletedContextKey, true)
 	}
 	logSecurityAuditDone(reqLog, request, decision, false)
-	return recordReputationContentBlock(c, subject, &decision)
+	return recordReputationContentBlock(c, subject, &decision, stage)
 }
 
 func logSecurityAuditStart(reqLog *zap.Logger, request securityaudit.Request, bodyBytes int, cached bool) {

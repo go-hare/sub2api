@@ -540,7 +540,8 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 	}
-	if err := s.applyAccountReputation(ctx, account, input.ReputationTierID, input.ReputationScoreEnabled, true); err != nil {
+	tierID := input.ReputationTierID
+	if err := s.applyAccountReputation(ctx, account, &tierID, input.ReputationScoreEnabled, true); err != nil {
 		return nil, err
 	}
 
@@ -927,11 +928,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
-	tierID := account.ReputationTierID
-	if input.ReputationTierID != nil {
-		tierID = *input.ReputationTierID
-	}
-	if err := s.applyAccountReputation(ctx, account, tierID, input.ReputationScoreEnabled, false); err != nil {
+	if err := s.applyAccountReputation(ctx, account, input.ReputationTierID, input.ReputationScoreEnabled, false); err != nil {
 		return nil, err
 	}
 
@@ -1836,7 +1833,7 @@ func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account 
 	return mode
 }
 
-func (s *adminServiceImpl) applyAccountReputation(ctx context.Context, account *Account, tierID string, scoreEnabled *bool, requiredWhenEnabled bool) error {
+func (s *adminServiceImpl) applyAccountReputation(ctx context.Context, account *Account, tierID *string, scoreEnabled *bool, requiredWhenEnabled bool) error {
 	if s == nil || s.reputationService == nil || account == nil {
 		return nil
 	}
@@ -1844,19 +1841,28 @@ func (s *adminServiceImpl) applyAccountReputation(ctx context.Context, account *
 	if !settings.Enabled {
 		return nil
 	}
-	if strings.TrimSpace(tierID) == "" && requiredWhenEnabled {
-		tierID = DefaultAccountReputationTierID(settings.Tiers, settings.InitialScore)
+	if !requiredWhenEnabled && tierID == nil && scoreEnabled == nil {
+		return nil
 	}
-	if strings.TrimSpace(tierID) != "" {
-		if err := s.reputationService.ValidateAccountTier(ctx, tierID); err != nil {
+	patch := AccountReputationPatch{}
+	if requiredWhenEnabled || tierID != nil {
+		id := ""
+		if tierID != nil {
+			id = strings.TrimSpace(*tierID)
+		}
+		if id == "" && requiredWhenEnabled {
+			id = DefaultAccountReputationTierID(settings.Tiers, settings.InitialScore)
+		}
+		if err := s.reputationService.ValidateAccountTier(ctx, id); err != nil {
 			return err
 		}
+		account.ReputationTierID = id
+		patch.TierID = &account.ReputationTierID
 	}
-	account.ReputationTierID = strings.TrimSpace(tierID)
-	account.ReputationScoreEnabled = scoreEnabled
-	var storedTier *string
-	if account.ReputationTierID != "" {
-		storedTier = &account.ReputationTierID
+	if requiredWhenEnabled || scoreEnabled != nil {
+		account.ReputationScoreEnabled = scoreEnabled
+		patch.ScoreEnabled = scoreEnabled
+		patch.SetScoreEnabled = true
 	}
-	return s.reputationService.SetAccountFields(ctx, account.ID, storedTier, scoreEnabled)
+	return s.reputationService.SetAccountFields(ctx, account.ID, patch)
 }

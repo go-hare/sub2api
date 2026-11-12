@@ -161,6 +161,35 @@ func TestRunSecurityAuditLogsWebSocketChecksAndCacheHits(t *testing.T) {
 	require.Equal(t, int64(1), engine.evaluates.Load())
 }
 
+func TestReputationContentAuditScoresOncePerRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	subject := middleware2.AuthSubject{UserID: 7}
+	block := &securityaudit.Decision{Kind: securityaudit.DecisionBlock}
+
+	require.True(t, markReputationContentAuditScored(c, "http"))
+	require.False(t, markReputationContentAuditScored(c, "body"))
+	recordReputationContentBlock(c, subject, block, "http")
+	recordReputationContentBlock(c, subject, block, "later")
+
+	scored, ok := c.Get(reputationContentAuditScoredKey)
+	require.True(t, ok)
+	require.Len(t, scored.(map[string]struct{}), 1)
+
+	require.True(t, markReputationContentAuditScored(c, "first_turn"))
+	c.Set(securityAuditWSTurnContextKey, 2)
+	require.True(t, markReputationContentAuditScored(c, "subsequent_turn"))
+	require.False(t, markReputationContentAuditScored(c, "subsequent_turn"))
+	c.Set(securityAuditWSTurnContextKey, 3)
+	require.True(t, markReputationContentAuditScored(c, "subsequent_turn"))
+	require.Len(t, scored.(map[string]struct{}), 4)
+
+	allow := &securityaudit.Decision{Kind: securityaudit.DecisionAllow, AllowNextStage: true}
+	require.Same(t, allow, recordReputationContentBlock(c, subject, allow, "http"))
+}
+
 type turnCountingEngine struct {
 	mode      securityaudit.Mode
 	enqueues  atomic.Int64

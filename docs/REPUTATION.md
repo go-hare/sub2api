@@ -59,7 +59,9 @@ and tier bindings remain.
 While the feature is enabled, creating or updating an account must name an
 existing tier. An empty tier on create is stored as the floor tier of the
 configured initial score. While the feature is disabled, account writes do
-not change reputation columns.
+not change reputation columns. An update that omits `reputation_tier_id` or
+`reputation_score_enabled` leaves that stored column unchanged, so a
+credential-only save cannot reset an explicit scoring flag to NULL.
 
 `reputation_score_enabled` controls only security-event deductions for that
 account. `oauth` and `setup-token` accounts deduct by default. Every other
@@ -71,12 +73,14 @@ Content-audit deductions do not read this flag.
 Automatic changes run only while the feature is enabled. They never fail the
 request that caused them. A zero delta is not stored, except for registration
 and an administrator adjustment. The resulting score is always clamped to
-0–100.
+0–100. Score writes are one atomic update per event, so concurrent changes on
+the same user do not overwrite each other. Each log row records the actual
+score before and after that change.
 
 | Event | Default | Effect |
 | --- | --- | --- |
 | `register` | on, writes the initial score | Self-registration and administrator user creation set the score to the current initial score. This is not added to an existing score. |
-| `content_audit_block` | on, deduct 5 | A content-audit decision that blocks the request. Extraction failures, pass-through, and other non-block decisions do not score. |
+| `content_audit_block` | on, deduct 5 | A content-audit decision that blocks the request. Multiple stages of the same HTTP request score once. Each WebSocket turn can score once. Extraction failures, pass-through, and other non-block decisions do not score. |
 | `own_account_security` | on, deduct 20 | OpenAI `cyber_policy` on an `oauth` or `setup-token` account whose score flag resolves to enabled. |
 | `upstream_security` | on, deduct 5 | The same `cyber_policy` mark on any other account type whose score flag resolves to enabled. |
 | `recharge` | on, 5 points per 100 | Positive balance credited by payment fulfillment. |

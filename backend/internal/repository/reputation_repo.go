@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -37,12 +38,58 @@ func (r *reputationRepository) GetUserScore(ctx context.Context, userID int64) (
 	return service.ClampReputationScore(score), nil
 }
 
-func (r *reputationRepository) SetUserScore(ctx context.Context, userID int64, score int) error {
+func (r *reputationRepository) ApplyUserScoreChange(ctx context.Context, userID int64, delta int, absolute *int) (int, int, error) {
 	if r == nil || r.sql == nil {
-		return errors.New("reputation repository unavailable")
+		return 0, 0, errors.New("reputation repository unavailable")
 	}
-	_, err := r.sql.ExecContext(ctx, `UPDATE users SET reputation_score = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, userID, service.ClampReputationScore(score))
-	return err
+	var (
+		query string
+		args  []any
+	)
+	if absolute != nil {
+		query = `
+WITH prev AS (
+  SELECT id, reputation_score
+  FROM users
+  WHERE id = $1 AND deleted_at IS NULL
+  FOR UPDATE
+)
+UPDATE users u
+SET reputation_score = GREATEST($2, LEAST($3, $4)),
+    updated_at = NOW()
+FROM prev
+WHERE u.id = prev.id
+RETURNING prev.reputation_score, u.reputation_score`
+		args = []any{userID, service.ReputationMinScore, service.ReputationMaxScore, service.ClampReputationScore(*absolute)}
+	} else {
+		query = `
+WITH prev AS (
+  SELECT id, reputation_score
+  FROM users
+  WHERE id = $1 AND deleted_at IS NULL
+  FOR UPDATE
+)
+UPDATE users u
+SET reputation_score = GREATEST($2, LEAST($3, prev.reputation_score + $4)),
+    updated_at = NOW()
+FROM prev
+WHERE u.id = prev.id
+RETURNING prev.reputation_score, u.reputation_score`
+		args = []any{userID, service.ReputationMinScore, service.ReputationMaxScore, delta}
+	}
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return 0, 0, sql.ErrNoRows
+	}
+	var before, after int
+	if err := rows.Scan(&before, &after); err != nil {
+		return 0, 0, err
+	}
+	return service.ClampReputationScore(before), service.ClampReputationScore(after), nil
 }
 
 func (r *reputationRepository) InsertLog(ctx context.Context, log service.ReputationScoreLog) error {
@@ -76,16 +123,32 @@ SELECT COUNT(*) FROM accounts WHERE reputation_tier_id = $1 AND deleted_at IS NU
 	return count, nil
 }
 
-func (r *reputationRepository) SetAccountReputation(ctx context.Context, accountID int64, tierID *string, scoreEnabled *bool) error {
+func (r *reputationRepository) SetAccountReputation(ctx context.Context, accountID int64, patch service.AccountReputationPatch) error {
 	if r == nil || r.sql == nil {
 		return errors.New("reputation repository unavailable")
 	}
-	_, err := r.sql.ExecContext(ctx, `
-UPDATE accounts
-SET reputation_tier_id = $2,
-    reputation_score_enabled = $3,
-    updated_at = NOW()
-WHERE id = $1 AND deleted_at IS NULL`, accountID, tierID, scoreEnabled)
+	sets := make([]string, 0, 3)
+	args := []any{accountID}
+	n := 2
+	if patch.TierID != nil {
+		var tier any
+		if strings.TrimSpace(*patch.TierID) != "" {
+			tier = strings.TrimSpace(*patch.TierID)
+		}
+		sets = append(sets, fmt.Sprintf("reputation_tier_id = $%d", n))
+		args = append(args, tier)
+		n++
+	}
+	if patch.SetScoreEnabled {
+		sets = append(sets, fmt.Sprintf("reputation_score_enabled = $%d", n))
+		args = append(args, patch.ScoreEnabled)
+		n++
+	}
+	if len(sets) == 0 {
+		return nil
+	}
+	sets = append(sets, "updated_at = NOW()")
+	_, err := r.sql.ExecContext(ctx, fmt.Sprintf(`UPDATE accounts SET %s WHERE id = $1 AND deleted_at IS NULL`, strings.Join(sets, ", ")), args...)
 	return err
 }
 
