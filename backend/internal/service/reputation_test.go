@@ -165,6 +165,41 @@ func TestApplyClampedConcurrentDeductionsMatchLogs(t *testing.T) {
 	}
 }
 
+func TestAdminSetScoreReturnsStoreError(t *testing.T) {
+	t.Parallel()
+	store := newMemReputationStore(nil)
+	svc := enabledReputationService(store)
+	err := svc.AdminSetScore(context.Background(), 7, 1, 40, "manual")
+	if err == nil {
+		t.Fatal("expected error when the user score cannot be written")
+	}
+	if len(store.logs) != 0 {
+		t.Fatalf("logs %#v", store.logs)
+	}
+}
+
+func TestAdminSetScoreWritesClampedScore(t *testing.T) {
+	t.Parallel()
+	store := newMemReputationStore(map[int64]int{7: 60})
+	svc := enabledReputationService(store)
+	svc.mu.Lock()
+	svc.settings.Enabled = false
+	svc.mu.Unlock()
+	if err := svc.AdminSetScore(context.Background(), 7, 1, 150, "cap"); err != nil {
+		t.Fatal(err)
+	}
+	score, err := store.GetUserScore(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if score != 100 {
+		t.Fatalf("score %d want 100", score)
+	}
+	if len(store.logs) != 1 || store.logs[0].Event != ReputationEventAdminAdjust || store.logs[0].ScoreAfter != 100 {
+		t.Fatalf("logs %#v", store.logs)
+	}
+}
+
 func TestApplyAccountReputationUpdateOmitsUnspecifiedFields(t *testing.T) {
 	t.Parallel()
 	store := newMemReputationStore(nil)

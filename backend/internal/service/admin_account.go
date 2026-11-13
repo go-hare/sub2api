@@ -332,6 +332,11 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	}
 	// A copied credential must be reviewed before it can share live traffic with its source.
 	duplicate.Schedulable = false
+	duplicate.ReputationTierID = strings.TrimSpace(source.ReputationTierID)
+	if source.ReputationScoreEnabled != nil {
+		enabled := *source.ReputationScoreEnabled
+		duplicate.ReputationScoreEnabled = &enabled
+	}
 	if s.accountDuplicateRepo == nil {
 		return nil, errors.New("account duplicate repository is not configured")
 	}

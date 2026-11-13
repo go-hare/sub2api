@@ -161,34 +161,39 @@ func (s *ReputationService) FilterAccounts(ctx context.Context, userID int64, ac
 }
 
 func (s *ReputationService) Apply(ctx context.Context, input ReputationApplyInput) {
+	if err := s.apply(ctx, input); err != nil {
+		slog.Warn("reputation.apply_score_failed", "user_id", input.UserID, "event", input.Event, "error", err)
+	}
+}
+
+func (s *ReputationService) apply(ctx context.Context, input ReputationApplyInput) error {
 	if s == nil || s.store == nil {
-		return
+		return nil
 	}
 	settings := s.GetSettings(ctx)
 	if !settings.Enabled && input.Event != ReputationEventAdminAdjust {
-		return
+		return nil
 	}
 	if input.UserID <= 0 {
-		return
+		return nil
 	}
 	if IsReputationSecurityEvent(input.Event) && !AccountReputationScoreEnabled(input.AccountType, input.ScoreEnabled) {
-		return
+		return nil
 	}
 	delta, absolute, skip := reputationDelta(settings, input)
 	if skip {
-		return
+		return nil
 	}
 	if absolute == nil && delta == 0 && input.Event != ReputationEventRegister && input.Event != ReputationEventAdminAdjust {
-		return
+		return nil
 	}
 	before, after, err := s.store.ApplyUserScoreChange(ctx, input.UserID, delta, absolute)
 	if err != nil {
-		slog.Warn("reputation.apply_score_failed", "user_id", input.UserID, "error", err)
-		return
+		return err
 	}
 	delta = after - before
 	if delta == 0 && input.Event != ReputationEventRegister && input.Event != ReputationEventAdminAdjust {
-		return
+		return nil
 	}
 	log := ReputationScoreLog{
 		UserID:       input.UserID,
@@ -208,6 +213,7 @@ func (s *ReputationService) Apply(ctx context.Context, input ReputationApplyInpu
 	if err := s.store.InsertLog(ctx, log); err != nil {
 		slog.Warn("reputation.insert_log_failed", "user_id", input.UserID, "error", err)
 	}
+	return nil
 }
 
 func reputationDelta(settings ReputationSettings, input ReputationApplyInput) (delta int, absolute *int, skip bool) {
@@ -280,15 +286,17 @@ func (s *ReputationService) AdminSetScore(ctx context.Context, userID, actorAdmi
 	if s == nil || s.store == nil {
 		return infraerrors.ServiceUnavailable("REPUTATION_UNAVAILABLE", "reputation store unavailable")
 	}
+	if userID <= 0 {
+		return infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
 	value := ClampReputationScore(score)
-	s.Apply(ctx, ReputationApplyInput{
+	return s.apply(ctx, ReputationApplyInput{
 		UserID:       userID,
 		Event:        ReputationEventAdminAdjust,
 		Absolute:     &value,
 		ActorAdminID: &actorAdminID,
 		Reason:       reason,
 	})
-	return nil
 }
 
 func (s *ReputationService) SetAccountFields(ctx context.Context, accountID int64, patch AccountReputationPatch) error {

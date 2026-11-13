@@ -89,22 +89,25 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 	sessionWindowStart := time.Now().Add(-2 * time.Hour)
 	sessionWindowEnd := time.Now().Add(2 * time.Hour)
 
+	scoreEnabled := false
 	source := &Account{
-		Name:                  "primary",
-		Notes:                 &notes,
-		Platform:              PlatformAnthropic,
-		Type:                  AccountTypeAPIKey,
-		ProxyID:               &proxyID,
-		ProxyFallbackOriginID: &originalProxyID,
-		Concurrency:           6,
-		Priority:              40,
-		RateMultiplier:        &rateMultiplier,
-		LoadFactor:            &loadFactor,
-		Status:                StatusError,
-		Schedulable:           true,
-		ErrorMessage:          "upstream unavailable",
-		ExpiresAt:             &expiresAt,
-		AutoPauseOnExpired:    false,
+		Name:                   "primary",
+		Notes:                  &notes,
+		ReputationTierID:       "tier-risk",
+		ReputationScoreEnabled: &scoreEnabled,
+		Platform:               PlatformAnthropic,
+		Type:                   AccountTypeAPIKey,
+		ProxyID:                &proxyID,
+		ProxyFallbackOriginID:  &originalProxyID,
+		Concurrency:            6,
+		Priority:               40,
+		RateMultiplier:         &rateMultiplier,
+		LoadFactor:             &loadFactor,
+		Status:                 StatusError,
+		Schedulable:            true,
+		ErrorMessage:           "upstream unavailable",
+		ExpiresAt:              &expiresAt,
+		AutoPauseOnExpired:     false,
 		Credentials: map[string]any{
 			"api_key": "secret",
 			"nested":  map[string]any{"token": "source-token"},
@@ -171,6 +174,10 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 	require.Equal(t, source.ProxyFallbackOriginID, duplicate.ProxyID)
 	require.Equal(t, source.RateMultiplier, duplicate.RateMultiplier)
 	require.Equal(t, source.LoadFactor, duplicate.LoadFactor)
+	require.Equal(t, "tier-risk", duplicate.ReputationTierID)
+	require.NotNil(t, duplicate.ReputationScoreEnabled)
+	require.False(t, *duplicate.ReputationScoreEnabled)
+	require.NotSame(t, source.ReputationScoreEnabled, duplicate.ReputationScoreEnabled)
 	require.Equal(t, source.GroupIDs, repo.groupsOf[duplicate.ID])
 	require.Equal(t, []AccountGroup{
 		{AccountID: duplicate.ID, GroupID: 7, Priority: 50},

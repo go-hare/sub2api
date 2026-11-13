@@ -5049,6 +5049,13 @@ const tempUnschedPresets = computed(() => [
   }
 ])
 
+const {
+  enabled: reputationEnabled,
+  tierOptions: reputationTierOptions,
+  defaultTierID,
+  load: loadReputationSettings
+} = useReputationSettings()
+
 onMounted(() => { void loadReputationSettings() })
 const form = reactive({
   name: '',
@@ -5160,6 +5167,16 @@ watch(
     } else {
       form.type = 'apikey'
     }
+  },
+  { immediate: true }
+)
+
+// 扣分开关跟随账号类型默认值：oauth / setup-token 默认开，其余类型默认关。
+// 用户改类型后不再沿用上一种类型的显式值。
+watch(
+  () => form.type,
+  (accountType) => {
+    form.reputation_score_enabled = defaultReputationScoreEnabled(accountType)
   },
   { immediate: true }
 )

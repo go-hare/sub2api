@@ -3640,6 +3640,13 @@ watch(() => props.account?.id, () => {
   if (opencodeGoState.value && !opencodeGoState.value.snapshot) void loadOpenCodeGoUsage()
 })
 
+const {
+  enabled: reputationEnabled,
+  tierOptions: reputationTierOptions,
+  defaultTierID,
+  load: loadReputationSettings
+} = useReputationSettings()
+
 onMounted(() => { void loadReputationSettings() })
 onMounted(() => {
   if (opencodeGoState.value && !opencodeGoState.value.snapshot) void loadOpenCodeGoUsage()

@@ -83,7 +83,7 @@ RETURNING prev.reputation_score, u.reputation_score`
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return 0, 0, sql.ErrNoRows
+		return 0, 0, service.ErrUserNotFound
 	}
 	var before, after int
 	if err := rows.Scan(&before, &after); err != nil {
